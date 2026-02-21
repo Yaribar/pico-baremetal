@@ -112,7 +112,7 @@ all: $(TARGET).uf2
 
 # ── Assemble .S files (boot2 is written in assembly)
 %.o: %.S
-	$(CC) $(CPU_FLAGS) -c $< -o $@
+	$(CC) $(CPU_FLAGS) -I boot2/include -c $< -o $@
 
 # ── Link all object files into one ELF binary
 # ELF (Executable and Linkable Format) is the standard binary format.
