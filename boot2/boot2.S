@@ -26,7 +26,6 @@
 //                4-byte checksum. Therefore code size cannot exceed 252 bytes.
 // ----------------------------------------------------------------------------
 
-#include "pico/asm_helper.S"
 #include "hardware/regs/addressmap.h"
 #include "hardware/regs/ssi.h"
 #include "hardware/regs/pads_qspi.h"
@@ -90,7 +89,7 @@
 .cpu cortex-m0plus
 .thumb
 
-.section .text
+.section .boot2, "ax"
 
 // The exit point is passed in lr. If entered from bootrom, this will be the
 // flash address immediately following this second stage (0x10000100).
@@ -283,5 +282,13 @@ configure_ssi:
 .global literals
 literals:
 .ltorg
+
+// ── Padding + CRC32 ─────────────────────────────────────────────────────────
+// The ROM bootloader requires exactly 256 bytes: 252 bytes of code + 4 byte CRC.
+// .space fills the gap between end of code/literals and byte 252 with zeros.
+// The CRC32 word is a placeholder — patched by the build system after linking.
+_boot2_pad:
+.space 252 - (_boot2_pad - _stage2_boot), 0x00
+.word 0x00000000    // CRC32 — patched at build time
 
 .end

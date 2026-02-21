@@ -12,7 +12,7 @@ ENTRY(Reset_Handler)
 MEMORY 
 {
     FLASH (rx)  : ORIGIN = 0x10000000, LENGTH = 2048k
-    RAM (rwx) :ORIGIN = 20000000, LENGTH = 264k
+    RAM (rwx) : ORIGIN = 0x20000000, LENGTH = 264k
 }
 
 /* -------- STACK SIZE -----------------------------------------------------------
@@ -38,8 +38,7 @@ SECTIONS
     ------------------------------------------------------------------------------*/
 
     .boot2 : {
-        *(.boot2)
-
+        KEEP(*(.boot2))
     } > FLASH
 
     /* ---- Vector Table ------------------------------------------------------------
@@ -49,7 +48,7 @@ SECTIONS
     ---------------------------------------------------------------------------------*/
 
     .vectors : {
-        *(.vectors)
+        KEEP(*(.vectors))
     } > FLASH
 
     /* ---- Code and read-only data --------------------------------------------------
@@ -98,7 +97,7 @@ SECTIONS
     .bss(NOLOAD) : {
         _bss_start = .;
         *(.bss*)
-        *(COMMON).    /* Uninitialized globals form C */
+        *(COMMON)     /* Uninitialized globals from C */
         _bss_end = .;
     } > RAM 
 
@@ -116,5 +115,5 @@ SECTIONS
         . += _stack_size;
     } > RAM
 
-    _stack_top = ORIGIN(RAM) + LENGTH(RAM)
+    _stack_top = ORIGIN(RAM) + LENGTH(RAM);
 }

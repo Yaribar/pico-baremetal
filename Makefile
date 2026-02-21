@@ -127,6 +127,16 @@ $(TARGET).elf: $(ALL_OBJECTS) linker.ld
 # objcopy strips all the ELF metadata and outputs just the machine code bytes.
 $(TARGET).bin: $(TARGET).elf
 	$(OBJCOPY) -O binary $< $@
+	@# Patch CRC32 into boot2 (bytes 0-251 → checksum at bytes 252-255).
+	@# The ROM bootloader rejects boot2 if this doesn't match.
+	python3 -c "\
+	import struct, binascii; \
+	f = open('$@', 'r+b'); \
+	data = f.read(252); \
+	crc = binascii.crc32(data) & 0xffffffff; \
+	f.write(struct.pack('<I', crc)); \
+	f.close(); \
+	print('boot2 CRC32: 0x%08x' % crc)"
 
 # ── Convert raw binary to UF2
 # UF2 is the format the Pico's ROM USB bootloader understands.
@@ -134,7 +144,7 @@ $(TARGET).bin: $(TARGET).elf
 #               which matches the ORIGIN of FLASH in our linker script.
 # You need uf2conv.py in your project root (we will download it next).
 $(TARGET).uf2: $(TARGET).bin
-	python3 uf2conv.py -b 0x10000000 -o $@ $
+	python3 uf2conv.py -b 0x10000000 -f 0xe48bff56 -o $@ $<
 
 # ── Clean all generated files
 # Good practice — always have a clean target so you can do a fresh build.
