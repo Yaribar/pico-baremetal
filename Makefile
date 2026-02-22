@@ -56,7 +56,7 @@ CFLAGS += -g
 # -O2             optimisation level 2. GCC will produce tighter, faster code.
 #                 In bare metal, unoptimised code can miss timing requirements.
 #                 Use -O0 if you are debugging and instructions feel out of order.
-CFLAGS += -O2
+CFLAGS += -O0
 
 # ─── LINKER FLAGS ─────────────────────────────────────────────────────────────
 LDFLAGS  = $(CPU_FLAGS)
@@ -77,6 +77,10 @@ LDFLAGS += -Wl,--gc-sections
 #                 and variable was placed in memory. Invaluable for debugging
 #                 linker issues and verifying your memory layout is correct.
 LDFLAGS += -Wl,-Map=$(TARGET).map
+
+# Note: -lgcc (compiler runtime for division, 64-bit math, etc.) is linked
+# after object files in the ELF rule below. Library order matters — the linker
+# scans left to right, so -lgcc must come after the .o files that need it.
 
 # ─── SOURCES ──────────────────────────────────────────────────────────────────
 C_SOURCES   = src/startup.c \
@@ -118,25 +122,40 @@ all: $(TARGET).uf2
 # ELF (Executable and Linkable Format) is the standard binary format.
 # It contains your machine code plus debug symbols and section metadata.
 # The linker uses linker.ld to decide where each section goes in Flash/RAM.
+#
+# After linking, we patch the boot2 CRC32 directly in the ELF.
+# The RP2040 ROM checks bytes 0-251 of boot2 and expects a valid CRC at 252-255.
+# Without this, the ROM refuses to execute boot2 and the chip never boots.
+#
+# We patch the ELF (not the .bin) so that both the debugger (which loads the ELF
+# via SWD) and the UF2 (derived from the ELF) contain a valid boot2 CRC.
+# Previously the CRC was only patched in the .bin — so flashing via UF2 worked
+# but loading the ELF through a debugger left boot2 with CRC=0, causing the ROM
+# to reject it and never reach our application code.
 $(TARGET).elf: $(ALL_OBJECTS) linker.ld
-	$(CC) $(LDFLAGS) $(ALL_OBJECTS) -o $@
+	$(CC) $(LDFLAGS) $(ALL_OBJECTS) -lgcc -o $@
+	@# Extract .boot2 section → patch CRC → update it back into the ELF
+	$(OBJCOPY) -O binary --only-section=.boot2 $@ boot2_tmp.bin
+	python3 -c "\
+	import struct, binascii; \
+	bitrev8 = lambda b: int('{:08b}'.format(b)[::-1], 2); \
+	bitrev32 = lambda x: int('{:032b}'.format(x)[::-1], 2); \
+	f = open('boot2_tmp.bin', 'r+b'); \
+	data = f.read(252); \
+	crc = bitrev32((binascii.crc32(bytes(bitrev8(b) for b in data), 0xffffffff ^ 0xffffffff) ^ 0xffffffff) & 0xffffffff); \
+	f.write(struct.pack('<I', crc)); \
+	f.close(); \
+	print('boot2 CRC32: 0x%08x' % crc)"
+	$(OBJCOPY) --update-section .boot2=boot2_tmp.bin $@
+	@rm -f boot2_tmp.bin
 	$(SIZE) $@
 
 # ── Convert ELF to raw binary
 # The Pico does not understand ELF — it just wants raw bytes at raw addresses.
 # objcopy strips all the ELF metadata and outputs just the machine code bytes.
+# The boot2 CRC is already patched in the ELF, so the .bin inherits it.
 $(TARGET).bin: $(TARGET).elf
 	$(OBJCOPY) -O binary $< $@
-	@# Patch CRC32 into boot2 (bytes 0-251 → checksum at bytes 252-255).
-	@# The ROM bootloader rejects boot2 if this doesn't match.
-	python3 -c "\
-	import struct, binascii; \
-	f = open('$@', 'r+b'); \
-	data = f.read(252); \
-	crc = binascii.crc32(data) & 0xffffffff; \
-	f.write(struct.pack('<I', crc)); \
-	f.close(); \
-	print('boot2 CRC32: 0x%08x' % crc)"
 
 # ── Convert raw binary to UF2
 # UF2 is the format the Pico's ROM USB bootloader understands.

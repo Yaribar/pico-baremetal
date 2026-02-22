@@ -136,6 +136,7 @@ static void gpio_init(void) {
        The SIO OE_SET register only raises bits — never lowers others
        so we do not need a read-modify-write                                   */
     GPIO_OE_SET = LED_MASK;
+    GPIO_OUT_XOR = LED_MASK;
 }
 
 static void systick_init(void) {
@@ -169,6 +170,6 @@ int main(void) {
     while (1) {
         /* low power sleep — wake on next interrupt
            saves power and makes interrupt latency more predictable           */
-        __asm volatile ("wfi");
+        //__asm volatile ("wfi");
     }
 }
